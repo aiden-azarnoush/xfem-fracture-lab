@@ -8,7 +8,7 @@ async function initialize() {
   });
   postMessage({ type: "loading", message: "Loading numerical libraries…" });
   await runtime.loadPackage("numpy");
-  const response = await fetch("./python/xfem.py");
+  const response = await fetch("./python/xfem.py?v=2");
   if (!response.ok)
     throw new Error("The Python solver could not be downloaded.");
   await runtime.runPythonAsync(await response.text());

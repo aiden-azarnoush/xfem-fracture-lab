@@ -12,7 +12,8 @@ let mesh = "medium",
   fractured = false,
   flash = 0,
   growthStart = 0,
-  previousLengths = [];
+  previousLengths = [],
+  growthDuration = 900;
 const meshes = { coarse: [12, 8], medium: [18, 12], fine: [24, 16] };
 const presets = {
   glass: [70, 0.22, 10],
@@ -49,7 +50,7 @@ function draw() {
     y = f.y;
   ctx.fillStyle = "#dbe5f3";
   ctx.fillRect(x, y, w, h);
-  if (field) {
+  if (field && $("fieldView").value === "stress") {
     const vmax = Math.max(...field.values.map(Math.abs), 1e-10);
     field.triangles.forEach((tri, i) => {
       const t = Math.min(1, Math.abs(field.values[i]) / vmax);
@@ -64,6 +65,24 @@ function draw() {
       ctx.closePath();
       ctx.fill();
     });
+  }
+  if ($("fieldView").value === "toughness" || !field) {
+    const variation = +$("structure").value;
+    const dx = w / 60,
+      dy = h / 40;
+    for (let ix = 0; ix < 60; ix++)
+      for (let iy = 0; iy < 40; iy++) {
+        const px = ((ix + 0.5) * 0.3) / 60,
+          py = ((iy + 0.5) * 0.2) / 40;
+        const v = Math.exp(
+          variation *
+            (0.6 * Math.sin(80 * px + 23 * py) +
+              0.4 * Math.sin(44 * px - 95 * py + 1.7)),
+        );
+        const t = Math.max(0, Math.min(1, (v - 0.6) / 1.0));
+        ctx.fillStyle = `hsl(${210 - t * 10} ${35 + t * 10}% ${92 - t * 20}%)`;
+        ctx.fillRect(x + ix * dx, y + h - (iy + 1) * dy, dx + 0.5, dy + 0.5);
+      }
   }
   const [nx, ny] = meshes[mesh];
   if ($("showMesh").checked) {
@@ -106,29 +125,54 @@ function draw() {
   ctx.rotate(-Math.PI / 2);
   ctx.fillText("200 mm · fixed edge", 0, 0);
   ctx.restore();
-  const growth = Math.min(1, (performance.now() - growthStart) / 280);
+  const growth = Math.min(
+    1,
+    (performance.now() - growthStart) / growthDuration,
+  );
   crackData.forEach((c, i) => {
     const shownLength =
       (previousLengths[i] || 0) +
       (c.length - (previousLengths[i] || 0)) * growth;
-    const yy = y + (200 - c.y * 1000) * f.s,
-      tip = x + (300 - shownLength * 1000) * f.s;
+    let remaining = shownLength;
+    const origin = c.points[0];
+    let tip = origin;
+    ctx.beginPath();
+    ctx.moveTo(x + origin[0] * 1000 * f.s, y + (200 - origin[1] * 1000) * f.s);
+    for (let j = 1; j < c.points.length; j++) {
+      const a = c.points[j - 1],
+        b = c.points[j],
+        distance = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const amount = Math.min(1, remaining / distance);
+      tip = [a[0] + (b[0] - a[0]) * amount, a[1] + (b[1] - a[1]) * amount];
+      ctx.lineTo(x + tip[0] * 1000 * f.s, y + (200 - tip[1] * 1000) * f.s);
+      remaining -= distance;
+      if (remaining <= 0) break;
+    }
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
     ctx.lineWidth = 4;
-    ctx.strokeStyle = "#f8fafc";
-    ctx.beginPath();
-    ctx.moveTo(x + w, yy);
-    ctx.lineTo(tip, yy);
+    ctx.strokeStyle = "#fff";
     ctx.stroke();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = "#d64a36";
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = "#bc3a2f";
     ctx.stroke();
-    ctx.fillStyle = "#d64a36";
+    ctx.fillStyle = c.stopped ? "#854831" : "#d64a36";
     ctx.beginPath();
-    ctx.arc(tip, yy, 3, 0, Math.PI * 2);
+    ctx.arc(
+      x + tip[0] * 1000 * f.s,
+      y + (200 - tip[1] * 1000) * f.s,
+      3.4,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
-    ctx.font = "10px system-ui";
+    ctx.font = "11px system-ui";
     ctx.textAlign = "left";
-    ctx.fillText(`C${i + 1}`, x + w + 5, yy + 4);
+    ctx.fillText(
+      `C${i + 1}`,
+      x + w + 5,
+      y + (200 - origin[1] * 1000) * f.s + 4,
+    );
   });
   const hy = y + h * (1 - aim);
   ctx.setLineDash([3, 4]);
@@ -156,7 +200,7 @@ function draw() {
     ctx.fillStyle = "#a45c23";
     ctx.textAlign = "center";
     ctx.font = "600 14px system-ui";
-    ctx.fillText("Specimen separated", x + w / 2, y + h / 2 + 5);
+    ctx.fillText("Fracture limit reached", x + w / 2, y + h / 2 + 5);
   }
   if (flash > 0 || growth < 1) {
     flash = Math.max(0, flash - 0.06);
@@ -174,7 +218,9 @@ function setStatus(message) {
 }
 function controls() {
   document
-    .querySelectorAll("[data-mesh],#material,#hammer,#height,#reset")
+    .querySelectorAll(
+      "[data-mesh],#material,#structure,#hammer,#height,#position,#reset",
+    )
     .forEach((el) => (el.disabled = busy));
   ["young", "poisson", "toughness"].forEach(
     (id) => ($(id).disabled = busy || $("material").value !== "custom"),
@@ -183,7 +229,7 @@ function controls() {
   $("strike").textContent = busy
     ? "Calculating…"
     : fractured
-      ? "Specimen separated"
+      ? "Fracture limit reached"
       : ready
         ? "Strike specimen"
         : "Loading solver…";
@@ -200,10 +246,12 @@ function reset() {
   crackData = [];
   previousLengths = [];
   field = null;
-  $("stressLegend").hidden = true;
+  updateLegend();
   strikes = 0;
   fractured = false;
   $("ratio").textContent = "—";
+  $("growthSummary").textContent =
+    "Cracks choose a direction at each step. Move the hammer to change the loading.";
   $("solveTime").textContent = "";
   readouts();
   controls();
@@ -230,7 +278,7 @@ function strike() {
   controls();
   flash = 1;
   draw();
-  setStatus("Solving the current specimen and a virtual crack extension…");
+  setStatus("Comparing growth directions at the crack tips…");
   const id = ++requestId;
   worker.postMessage({
     id,
@@ -242,6 +290,7 @@ function strike() {
       mass: +$("hammer").value,
       height: +$("height").value / 100,
       aim,
+      variation: +$("structure").value,
       cracks: crackData,
     },
   });
@@ -259,7 +308,7 @@ function strike() {
   }, 120000);
 }
 function startWorker() {
-  worker = new Worker("worker.js");
+  worker = new Worker("worker.js?v=2");
   worker.onmessage = ({ data }) => {
     if (data.type === "loading") {
       $("loading").textContent = data.message;
@@ -297,14 +346,21 @@ function startWorker() {
     strikes++;
     previousLengths = crackData.map((c) => c.length);
     growthStart = performance.now();
+    growthDuration = Math.max(600, (r.events?.length || 1) * 400);
     crackData = r.cracks;
     field = r.field;
     fractured = r.fractured;
     $("ratio").textContent = r.ratio.toFixed(2) + "×";
     $("solveTime").textContent = `Solved in ${r.seconds.toFixed(1)} s`;
-    $("stressLegend").hidden = false;
-    $("stressLegend").textContent =
-      `Shear stress · 0–${Math.max(...field.values).toFixed(1)} MPa`;
+    updateLegend();
+    $("growthSummary").textContent = r.events?.length
+      ? r.events
+          .map(
+            (e) =>
+              `C${e.crack}: ${e.new ? "started " : ""}${e.turn === 0 ? "continued" : `turned ${Math.abs(e.turn)}°`}`,
+          )
+          .join(" · ")
+      : "No direction exceeded the fracture resistance.";
     setStatus(r.message);
     readouts();
     controls();
@@ -385,6 +441,7 @@ canvas.onkeydown = (e) => {
   }
 };
 hammerValues();
+updateLegend();
 startWorker();
 
 $("settingsButton").onclick = () => {
@@ -396,3 +453,19 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && document.body.classList.contains("settings-open"))
     $("settingsButton").click();
 });
+
+function updateLegend() {
+  $("stressLegend").hidden = false;
+  if (field && $("fieldView").value === "stress")
+    $("stressLegend").textContent =
+      `Shear stress · 0–${Math.max(...field.values).toFixed(1)} MPa`;
+  else
+    $("stressLegend").textContent = +$("structure").value
+      ? "Toughness: light = weaker · dark = stronger"
+      : "Uniform fracture toughness";
+}
+$("structure").onchange = reset;
+$("fieldView").onchange = () => {
+  updateLegend();
+  draw();
+};

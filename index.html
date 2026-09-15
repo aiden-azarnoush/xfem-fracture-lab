@@ -12,7 +12,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4ed8'/%3E%3Cpath d='M24 4L13 14l7 4L8 28' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="style.css?v=1" />
+    <link rel="stylesheet" href="style.css?v=2" />
   </head>
   <body>
     <header>
@@ -75,6 +75,15 @@
                 disabled
             /></label>
           </div>
+          <label class="structure-label" for="structure"
+            >Material structure</label
+          >
+          <select id="structure">
+            <option value="0.45" selected>
+              Varied toughness · illustrative
+            </option>
+            <option value="0">Uniform toughness</option>
+          </select>
           <p class="subtle">
             Illustrative properties, not certified material data.
           </p>
@@ -130,6 +139,16 @@
             </button>
           </div>
         </div>
+        <div class="growth-guide">
+          <span id="growthSummary"
+            >Cracks choose a direction at each step. Move the hammer to change
+            the loading.</span
+          ><label for="fieldView" class="sr-only">Color map</label
+          ><select id="fieldView">
+            <option value="stress">Stress map</option>
+            <option value="toughness">Toughness map</option>
+          </select>
+        </div>
         <div id="stage">
           <canvas
             id="canvas"
@@ -138,7 +157,7 @@
           ></canvas>
           <div id="stressLegend" hidden></div>
           <div class="canvas-note">
-            Move up or down to aim · Left-click to strike
+            Move up or down to aim · Click to start or grow cracks
           </div>
           <div id="loading">Preparing the Python solver…</div>
         </div>
@@ -202,33 +221,44 @@
       ><span class="eyebrow">MODEL & ASSUMPTIONS</span>
       <h2>A small XFEM experiment</h2>
       <p>
-        The Python solver computes a scalar out-of-plane displacement field on a
-        fixed triangular mesh. Crack faces use shifted Heaviside enrichment;
-        tips use the Mode III square-root enrichment. The left edge is held
-        fixed.
+        <strong>Cracks now choose their path.</strong> A strike can start a
+        crack near the impact or advance existing crack tips. At each growth
+        step, the solver compares straight ahead and turns of ±25° and ±50°. It
+        selects the direction with the largest energy release relative to the
+        local fracture resistance.
       </p>
       <p>
-        The hammer is represented by a pair of opposing out-of-plane shear loads
-        at the right edge. Its drop energy is converted to a peak-equivalent
-        load using an assumed 0.5 mm stopping distance. This is a quasi-static
-        teaching approximation, not a resolved hammer/contact simulation.
+        <strong>Move the hammer to change the loading.</strong> The load stays
+        at your selected height; it is no longer snapped to an old crack. Every
+        active crack can respond, so a different impact can turn a path or
+        initiate a separate crack. One strike can produce up to three successive
+        growth steps.
       </p>
       <p>
-        A virtual crack extension estimates energy release. Growth is allowed
-        when the released energy per new crack area exceeds the selected
-        fracture energy. Each strike advances at most one increment; strike
-        again to continue, or aim elsewhere to nucleate another crack.
+        <strong>Compare uniform and varied material.</strong> Varied toughness
+        gives the specimen fixed, smooth stronger and weaker regions. This
+        illustrative field enters the growth calculation; it is not random
+        animation. Use the Toughness map to see it. Uniform toughness removes
+        that variation. Straight growth can still be a reasonable result in a
+        symmetric, uniform specimen.
       </p>
       <p>
-        Cracks follow straight horizontal paths. Nucleation uses a finite trial
-        notch, so it is mesh dependent. There is no plasticity, fatigue,
-        branching, crack contact, or dynamic fragmentation. The small remaining
-        ligament is marked as separated once it is within one growth increment.
-        Visual crack width is exaggerated.
+        <strong>What is computed.</strong> The Python solver uses Mode III
+        (out-of-plane shear) XFEM: a scalar elastic displacement field, shifted
+        Heaviside enrichment across each crack, and square-root tip enrichment.
+        Each trial direction requires a new elastic solve. The left edge is
+        fixed; a pair of opposite shear loads on the right edge approximates the
+        hammer's effect using a 0.5 mm stopping distance.
       </p>
       <p>
-        Materials are illustrative elastic presets. Fine meshes cost more time
-        and do not make this an experimentally validated prediction.
+        <strong>Current limits.</strong> This is an unvalidated quasi-static
+        teaching model, not dynamic glass shattering. Paths advance leftward and
+        can curve, but a single tip does not split into branches. Cracks stop
+        near an outer boundary or another crack, with a numerical cutoff of 0.15
+        element widths. That cutoff is not a solved final break or
+        moving-fragment calculation. There is no plasticity, fatigue, crack-face
+        contact, or interior-impact nucleation. Finite trial directions and
+        notches remain mesh dependent.
       </p>
       <p>
         <a
@@ -246,6 +276,6 @@
         >
       </p>
     </dialog>
-    <script src="app.js?v=1"></script>
+    <script src="app.js?v=2"></script>
   </body>
 </html>

@@ -6,7 +6,7 @@ Explore crack initiation and propagation in a rectangular elastic specimen.
 The browser runs the Python extended finite element method (XFEM) solver
 locally, with a fixed triangular mesh, selectable materials, and repeated
 hammer strikes. This version models **Mode III, out-of-plane shear**, with
-prescribed straight crack paths.
+energy-selected, piecewise-linear crack paths that can turn through the material.
 
 ## Explore the web app
 
@@ -19,18 +19,25 @@ prescribed straight crack paths.
 3. Choose the hammer mass and drop height. Move the pointer up or down over
    the specimen to aim, then **left-click** to strike. The **Impact position**
    slider and **Strike specimen** button provide the same controls.
-4. Strike near an existing crack to extend it. Aim farther away to create
-   another crack. The default glass specimen, **0.5 kg hammer and 12 cm
-   drop**, initiates a crack on all three meshes.
+4. Strike to start a crack or advance existing tips. Each strike can produce
+   up to **three growth steps**, with a new direction selected at each step.
+   Aim farther away to make a new crack eligible for initiation. The default
+   glass specimen, **0.5 kg hammer and 12 cm drop**, initiates a crack on
+   all three meshes. Existing cracks can also respond to a new impact.
 5. Watch the crack count, longest crack, and **energy release / resistance**
    ratio. A ratio below 1 means the trial extension is subcritical; increase
    the drop height or hammer mass to encourage growth. The color map shows
    the last strike’s element-averaged shear-stress magnitude in MPa.
-6. Continue until the specimen is classified as separated, or use
+6. Continue until a crack reaches the numerical fracture limit, or use
    **Reset specimen** to start again. Open **About the model** for the
    assumptions and the meaning of the simplified hammer load.
 
-Changing the material, custom properties, or mesh starts a fresh specimen.
+Choose **Varied toughness** for fixed stronger and weaker regions, or
+**Uniform toughness** to remove this variation. Switch to **Toughness map**
+to see the regions: light is weaker, dark is stronger. The variation enters
+the fracture calculation; the paths are not random drawing effects.
+
+Changing the material, material structure, custom properties, or mesh starts a fresh specimen.
 Changing the hammer mass, drop height, or impact position preserves cracks.
 The page fits the viewport; on small screens **Settings** opens a panel
 that can scroll independently. With the canvas focused, **Space/Enter**
@@ -73,10 +80,12 @@ K_{ij}=t\int_\Omega\mu\nabla\Phi_i\cdot\nabla\Phi_j\,dA.
 ```
 
 Here t is thickness, hₑ is the horizontal element width, and Φᵢ denotes
-an ordinary or enriched basis function. The tip’s local axis points left,
-along the prescribed growth direction. Tip enrichment covers nodes within
-2hₑ of the tip. Heaviside enrichment represents the displacement jump
-behind the tip. These additional unknowns enter the stiffness matrix and
+an ordinary or enriched basis function. The tip’s local axis follows its
+most recent segment. Tip enrichment covers nodes within 2hₑ of the tip.
+The tip function has the displayed asymptotic form near the tip; away from
+it, its sign is adjusted to route the displacement jump along the actual
+polyline rather than an infinite extension of the last segment.
+Heaviside enrichment also follows the polyline. These additional unknowns enter the stiffness matrix and
 the elastic solution used to decide growth.
 
 ### Mesh choices
@@ -107,8 +116,13 @@ tearing impulse around the selected impact height. Each set has resultant
 magnitude F. This is an illustrative load calibration; the hammer’s motion,
 contact force history, and rebound are not resolved.
 
-Each strike solves the current geometry and a virtual crack extension
-under the same force. For this load-controlled linear elastic calculation:
+At each growth step the solver compares trial extensions at every active
+crack tip. Candidate turns are **0°, ±25°, and ±50°** relative to the current
+heading. Directions more than 65° away from the global leftward axis are
+excluded so each path remains a single-valued graph without looping.
+Each admissible trial requires a new elastic solve under the same applied
+load. The load remains at the selected impact height; it is not snapped
+to an existing crack.
 
 ```math
 U=\frac12\mathbf{f}^{\mathsf T}\mathbf{u},\qquad
@@ -116,32 +130,47 @@ G\approx\max\left(0,\frac{U_{\mathrm{trial}}-U_{\mathrm{current}}}
 {t\,\Delta a}\right).
 ```
 
-An extension is accepted when **G ≥ Gc**, where Gc is the selected fracture
-energy, and the input energy covers the new crack area:
+The candidate with the largest G/Gc is selected. It is accepted only when
+**G/Gc ≥ 1** and the remaining input-energy budget covers the new crack
+area. A strike permits at most three accepted extensions, each costing
+Gc × t × Δa from that budget. An existing-tip increment is **0.65hₑ**;
+a new trial notch is **1.3hₑ** long. New nucleation is considered only on
+the first step, when the impact is at least **1.5hₑ** from every existing
+crack mouth. Existing tips compete with the new trial notch, so a remote
+strike does not guarantee a new crack.
+
+The selected base fracture energy is multiplied by a fixed smooth field:
 
 ```math
-E_{\mathrm{drop}}\ge G_c\,t\,\Delta a.
+G_c(x,y)=G_{c0}\exp\left[v\left(0.6\sin(80x+23y)
++0.4\sin(44x-95y+1.7)\right)\right].
 ```
 
-The displayed ratio is G/Gc for the attempted extension, including rejected
-attempts. Each strike advances an existing crack by at most **0.65hₑ**;
-a new trial notch is **1.3hₑ** long. A strike within **1.5hₑ** of an existing
-crack targets it. Strikes at other heights can initiate additional cracks.
-The stress map uses the current strike load on the accepted geometry and
-normalizes its color scale separately for each strike.
+Coordinates are in meters. **Uniform toughness** uses v = 0;
+**Varied toughness** uses v = 0.45. The latter is an illustrative spatial
+variation, not a measured microstructure. Resistance along a candidate
+segment is averaged at its quarter, midpoint, and three-quarter positions.
+
+The displayed ratio is the last selected directional trial's G/Gc,
+including a rejected trial if growth arrests after earlier accepted steps.
+The longest-crack readout reports arc length along the polyline. The stress
+map uses the final accepted geometry under the current strike load, with
+its color scale normalized separately for each strike. Before the first
+strike, the specimen displays the toughness field.
 
 ### Scope of the fracture model
 
-Cracks start at the right edge and remain horizontal. Multiple cracks
-interact through the global elastic solution, with at most 12 separate
-cracks. There is no curved-path selection, branching, crack intersection,
-or special coalescence treatment.
+Cracks start at the right edge, can turn upward or downward, and progress
+leftward. Up to **eight separate cracks** interact through the global
+elastic solve. A single tip does not split into branches. There is no
+interior-impact nucleation, dynamic shattering, or intersection/coalescence
+solver.
 
-A remaining ligament of **one element width or less** is classified as
-separated, and the displayed terminal crack is completed to the left edge.
-The final stress map remains that of the last solved, nearly separated
-specimen. This last visual completion is not a resolved ligament-failure
-or fragment-motion calculation. Crack width is exaggerated for visibility.
+Growth stops at a numerical cutoff of **0.15hₑ** from an outer boundary
+or before a proposed intersection with another crack. The interface calls
+this **Fracture limit reached**, not a computed final separation. No crack
+is artificially completed across the remaining ligament. Crack width is
+exaggerated, and the growth animation is not physical time integration.
 
 This model assumes linear elastic, quasi-static antiplane deformation.
 It does not include plasticity, viscoelasticity, fatigue accumulation,
@@ -161,14 +190,17 @@ The system is diagonally scaled and stabilized with **10⁻¹¹** on the
 scaled diagonal. A solution is accepted only when it is finite and its
 relative free-degree-of-freedom equilibrium residual is below **10⁻⁴**.
 
-The six automated checks cover:
+The automated checks cover:
 
-- conservation of area during integration subdivision;
-- the analytic tip-function gradient against finite differences;
+- conservation of area during subdivision around kinked cracks;
+- rotated tip-function gradients against finite differences;
+- displacement jumps along the actual polyline, without a false jump along
+  the extrapolated tip tangent;
 - linear elastic scaling with shear modulus and equilibrium residuals;
 - approximate reflection symmetry of the intact specimen;
-- subcritical strikes, initiation, repeated growth, multiple cracks, and
-  terminal separation on **all three meshes**;
+- fixed and uniform toughness fields;
+- subcritical strikes, turning paths, and multiple cracks on **all three meshes**;
+- sensitivity to impact position, boundary/intersection cutoffs, and arc length;
 - rejection of invalid material and loading inputs.
 
 ```bash
@@ -176,10 +208,23 @@ python3 -m pip install -r python/requirements.txt
 python3 -m unittest discover -s python -v
 ```
 
-Browser checks also cover custom-material editing, invalid inputs,
-repeated strikes, multiple impact positions, and desktop/mobile layouts.
-These are consistency and behavior checks, **not experimental validation
-or an independent crack-tip benchmark**.
+The earlier straight-path interface was checked in a browser. Browser
+verification of this curved-path revision is incomplete; its Python tests
+and JavaScript syntax are checked separately. These are consistency and
+behavior checks, **not experimental validation or an independent crack-tip
+benchmark**. Directional selection may be sensitive to discretization and
+enrichment changes between trial geometries. Unresolved trial systems are
+excluded and reported in the status message.
+
+## Update the repository
+
+Upload the contents of the complete ZIP, keeping the `python/` folder.
+This revision requires **index.html, style.css, app.js, worker.js, and
+python/xfem.py together**. Replacing only the HTML and README leaves the
+old crack solver in place. The `?v=2` asset references refresh cached files.
+
+The link at the top points to GitHub Pages. It shows the new version only
+after you upload the files and GitHub finishes rebuilding the site.
 
 ## Run locally
 
