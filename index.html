@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>2D Fracture Lab · Aiden Azarnoush</title>
+    <meta
+      name="description"
+      content="An interactive Python XFEM experiment: strike a rectangular specimen, grow multiple cracks, and compare meshes and materials."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4ed8'/%3E%3Cpath d='M24 4L13 14l7 4L8 28' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="style.css?v=1" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <span class="eyebrow">COMPUTATIONAL MECHANICS</span>
+        <h1>2D Fracture Lab<span class="tag">XFEM</span></h1>
+      </div>
+      <div class="header-actions">
+        <button
+          id="settingsButton"
+          class="quiet"
+          aria-expanded="false"
+          aria-controls="settingsPanel"
+        >
+          Settings</button
+        ><button id="reset" class="quiet">↺ Reset specimen</button
+        ><button id="methodButton" class="quiet">About the model ↗</button>
+      </div>
+    </header>
+    <main>
+      <aside id="settingsPanel">
+        <section>
+          <h2><span>01</span> Specimen</h2>
+          <label for="material">Material</label
+          ><select id="material">
+            <option value="glass">Glass · brittle</option>
+            <option value="ceramic">Ceramic · brittle</option>
+            <option value="polymer">Polymer · idealized elastic</option>
+            <option value="custom">Custom material</option>
+          </select>
+          <div class="properties">
+            <label
+              >Young’s modulus <span>GPa</span
+              ><input
+                id="young"
+                type="number"
+                min="0.01"
+                max="1000"
+                step="0.1"
+                value="70"
+                disabled /></label
+            ><label
+              >Poisson’s ratio <span>ν</span
+              ><input
+                id="poisson"
+                type="number"
+                min="-0.9"
+                max="0.49"
+                step="0.01"
+                value="0.22"
+                disabled /></label
+            ><label class="wide"
+              >Fracture energy · J/m²<input
+                id="toughness"
+                type="number"
+                min="0.1"
+                max="100000"
+                step="1"
+                value="10"
+                disabled
+            /></label>
+          </div>
+          <p class="subtle">
+            Illustrative properties, not certified material data.
+          </p>
+        </section>
+        <section>
+          <h2><span>02</span> Mesh</h2>
+          <div class="segments" role="group" aria-label="Mesh density">
+            <button data-mesh="coarse">Coarse</button
+            ><button data-mesh="medium" class="active" aria-pressed="true">
+              Medium</button
+            ><button data-mesh="fine">Fine</button>
+          </div>
+          <div class="row">
+            <span id="meshCount">432 triangles</span
+            ><label class="check"
+              ><input id="showMesh" type="checkbox" checked /> Show mesh</label
+            >
+          </div>
+        </section>
+        <section>
+          <h2><span>03</span> Hammer</h2>
+          <label for="hammer">Hammer mass</label
+          ><select id="hammer">
+            <option value="0.25">Light · 0.25 kg</option>
+            <option value="0.5" selected>Standard · 0.5 kg</option>
+            <option value="1">Heavy · 1 kg</option>
+          </select>
+          <div class="row">
+            <label for="height">Drop height</label
+            ><output id="heightValue">12 cm</output>
+          </div>
+          <input id="height" type="range" min="1" max="40" value="12" />
+          <div class="row">
+            <label for="position">Impact position</label
+            ><output id="positionValue">50%</output>
+          </div>
+          <input id="position" type="range" min="8" max="92" value="50" />
+          <div class="impact">
+            <span>Energy per strike</span><strong id="energy">0.589 J</strong>
+          </div>
+        </section>
+      </aside>
+      <div class="workspace">
+        <div class="workspace-head">
+          <div>
+            <strong>Rectangular specimen</strong
+            ><span>300 × 200 mm · 5 mm thickness</span>
+          </div>
+          <div class="toolbar">
+            <span class="mode">Mode III · out-of-plane shear</span
+            ><button id="strike" class="primary" disabled>
+              Loading solver…
+            </button>
+          </div>
+        </div>
+        <div id="stage">
+          <canvas
+            id="canvas"
+            tabindex="0"
+            aria-label="Fracture specimen. Move vertically to aim. Click or press Space to strike; arrow keys adjust impact position."
+          ></canvas>
+          <div id="stressLegend" hidden></div>
+          <div class="canvas-note">
+            Move up or down to aim · Left-click to strike
+          </div>
+          <div id="loading">Preparing the Python solver…</div>
+        </div>
+        <div class="readouts">
+          <div><span>Strikes</span><strong id="strikes">0</strong></div>
+          <div><span>Cracks</span><strong id="cracks">0</strong></div>
+          <div>
+            <span>Longest crack</span
+            ><strong id="length">0 <small>mm</small></strong>
+          </div>
+          <div>
+            <span>Energy release / resistance</span
+            ><strong id="ratio">—</strong>
+          </div>
+        </div>
+        <div class="status-line">
+          <span id="status" role="status" aria-live="polite"
+            >Choose a material, aim the hammer, and strike.</span
+          ><span id="solveTime"></span>
+        </div>
+      </div>
+    </main>
+    <footer>
+      Written by <b>Aiden Azarnoush</b><br />
+      <a href="https://github.com/aiden-azarnoush/xfem-fracture-lab"
+        ><svg viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M5.5 3 1 8l4.5 5 1-1L2.9 8l3.6-4zM10.5 3l-1 1L13.1 8l-3.6 4 1 1L15 8z"
+          /></svg
+        >source on GitHub</a
+      >
+      <a href="https://github.com/aiden-azarnoush"
+        ><svg viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM8 4a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm0 6c-2 0-3.5 1-3.5 2v.3A5.5 5.5 0 0 0 8 13.5a5.5 5.5 0 0 0 3.5-1.2V12c0-1-1.5-2-3.5-2z"
+          /></svg
+        >all my repositories</a
+      >
+      <a href="https://aiden-azarnoush.github.io"
+        ><svg viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm4.9 6h-2.1a11 11 0 0 0-.9-3.6A5.5 5.5 0 0 1 12.9 7zM8 2.5c.7.8 1.4 2.3 1.6 4.5H6.4c.2-2.2.9-3.7 1.6-4.5zM3.1 7a5.5 5.5 0 0 1 3-3.6c-.4 1-.7 2.3-.9 3.6H3.1zm0 2h2.1c.2 1.3.5 2.6.9 3.6A5.5 5.5 0 0 1 3.1 9zM8 13.5c-.7-.8-1.4-2.3-1.6-4.5h3.2c-.2 2.2-.9 3.7-1.6 4.5zm1.9-.9c.4-1 .7-2.3.9-3.6h2.1a5.5 5.5 0 0 1-3 3.6z"
+          /></svg
+        >aiden-azarnoush.github.io</a
+      >
+      <div>
+        Found this useful?
+        <a href="https://paypal.me/azarnoush">☕ Buy me a coffee</a> &nbsp;
+        <a href="https://paypal.me/azarnoush/3">$3</a> ·
+        <a href="https://paypal.me/azarnoush/5">$5</a> ·
+        <a href="https://paypal.me/azarnoush">other</a>
+      </div>
+    </footer>
+    <dialog id="method">
+      <button
+        id="closeMethod"
+        class="quiet close"
+        aria-label="Close model information"
+      >
+        ✕</button
+      ><span class="eyebrow">MODEL & ASSUMPTIONS</span>
+      <h2>A small XFEM experiment</h2>
+      <p>
+        The Python solver computes a scalar out-of-plane displacement field on a
+        fixed triangular mesh. Crack faces use shifted Heaviside enrichment;
+        tips use the Mode III square-root enrichment. The left edge is held
+        fixed.
+      </p>
+      <p>
+        The hammer is represented by a pair of opposing out-of-plane shear loads
+        at the right edge. Its drop energy is converted to a peak-equivalent
+        load using an assumed 0.5 mm stopping distance. This is a quasi-static
+        teaching approximation, not a resolved hammer/contact simulation.
+      </p>
+      <p>
+        A virtual crack extension estimates energy release. Growth is allowed
+        when the released energy per new crack area exceeds the selected
+        fracture energy. Each strike advances at most one increment; strike
+        again to continue, or aim elsewhere to nucleate another crack.
+      </p>
+      <p>
+        Cracks follow straight horizontal paths. Nucleation uses a finite trial
+        notch, so it is mesh dependent. There is no plasticity, fatigue,
+        branching, crack contact, or dynamic fragmentation. The small remaining
+        ligament is marked as separated once it is within one growth increment.
+        Visual crack width is exaggerated.
+      </p>
+      <p>
+        Materials are illustrative elastic presets. Fine meshes cost more time
+        and do not make this an experimentally validated prediction.
+      </p>
+      <p>
+        <a
+          href="https://getfem.org/userdoc/xfem.html"
+          target="_blank"
+          rel="noopener"
+          >XFEM formulation</a
+        >
+        ·
+        <a
+          href="https://www.ltas-cm3.ulg.ac.be/FractureMechanics/print.php?p=Lecture3_P4"
+          target="_blank"
+          rel="noopener"
+          >Mode III fracture mechanics</a
+        >
+      </p>
+    </dialog>
+    <script src="app.js?v=1"></script>
+  </body>
+</html>
