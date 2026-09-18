@@ -7,6 +7,9 @@ The browser runs the Python extended finite element method (XFEM) solver
 locally, with a fixed triangular mesh, selectable materials, and repeated
 hammer strikes. This version models **Mode III, out-of-plane shear**, with
 energy-selected, piecewise-linear crack paths that can turn through the material.
+A second page, the **impact experiment**, uses bond-based peridynamics to show
+dynamic cracking with branching and fragmentation from the same materials and
+hammer.
 
 ## Explore the web app
 
@@ -47,6 +50,46 @@ The Python solver runs in a background worker through Pyodide, keeping the
 interface responsive during calculations. The first visit downloads the
 Python runtime and NumPy; calculations then run in the browser without a
 Python server or account.
+
+
+## The impact experiment (peridynamics)
+
+**[Open the impact page →](https://aiden-azarnoush.github.io/xfem-fracture-lab/impact.html)**
+
+The XFEM page grows one crack at a time from an energy criterion, which is the
+right lesson for stable crack growth. A hammer blow on glass is a different
+event: stress waves race outward, running cracks become unstable and branch,
+and small variations in the material decide where. The second page models
+that with **bond-based peridynamics**, running in plain JavaScript:
+
+- The plate is a cloud of nodes, each bonded to every neighbour within a
+  horizon of three spacings. A bond carries a force proportional to its
+  stretch and breaks permanently once the stretch exceeds
+  s₀ = √(4πG<sub>c</sub>/(9Eδ)). Newton’s second law is integrated
+  explicitly. Broken bonds *are* the cracks; nothing about their path is
+  prescribed, and branching, merging, and fragmentation emerge on their own.
+- Click anywhere on the plate to strike. Nodes under the hammer head are
+  pushed outward as the dent forms, with a push that grows with the impact
+  energy m·g·h. Strike again to add damage; **New plate** starts over.
+- Same presets (Glass, Ceramic, Polymer, Custom), same three mesh densities
+  (5, 3.5, 2.5 mm node spacing), same hammer controls plus a head radius.
+- **Material structure** scatters the node strengths randomly, as in real
+  glass; that scatter is what makes the cracks wander and fork.
+
+> [!NOTE]
+> The model is two-dimensional plane stress with Poisson’s ratio fixed at
+> 1/3 by the bond-based formulation; the in-plane push stands in for the
+> bending and contact stresses of a face-on blow and reproduces radial
+> cracks and branching, not the concentric ring cracks of a true face-on
+> impact. A tapered no-fail zone near the free edges suppresses spurious
+> edge damage from reflected waves, and node positions are jittered so
+> cracks do not follow the grid. It is a teaching model, not a validated
+> shatter simulation.
+
+> [!TIP]
+> Hit the glass preset twice in different places and watch the second set of
+> cracks find the first. Then switch to the polymer preset: the same blow
+> does nothing, because its fracture energy is thirty times higher.
 
 ## Physical model and normalization
 
@@ -243,8 +286,9 @@ the solver or its checks outside the browser.
 ## Repository layout
 
 ```
-index.html, style.css, app.js   web interface, canvas, and hammer controls
-worker.js                      Python runtime and background computation
+index.html, style.css, app.js   XFEM page: interface, canvas, and hammer controls
+impact.html, impact.js         impact page: bond-based peridynamics, all in JavaScript
+worker.js                      Python runtime and background computation (XFEM page)
 python/xfem.py                 XFEM solver and crack-growth calculation
 python/test_xfem.py             numerical consistency and regression checks
 python/requirements.txt        dependency for local Python use
